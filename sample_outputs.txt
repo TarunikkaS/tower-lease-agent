@@ -10,11 +10,13 @@ OUTPUT:
   "requested_height_m": 40,
   "region": "DXB-North",
   "checks": {
+    "request_parse_check": "PASSED",
     "tower_exists": true,
     "weight_capacity_check": "PASSED",
-    "regional_policy_check": "PASSED"
+    "regional_height_check": "PASSED",
+    "regional_single_asset_weight_check": "NOT_APPLICABLE"
   },
-  "reason": "Request approved. The tower has enough remaining capacity and the requested height follows the DXB-North regional policy.",
+  "reason": "Request approved. Tower TWR-101 has enough remaining capacity (475kg of 500kg used) and the request satisfies all DXB-North regional policies.",
   "final_tower_weight_kg": 475
 }
 ----------------------------------------------------------------------
@@ -30,9 +32,11 @@ OUTPUT:
   "requested_height_m": 20,
   "region": null,
   "checks": {
+    "request_parse_check": "PASSED",
     "tower_exists": false,
     "weight_capacity_check": "NOT_RUN",
-    "regional_policy_check": "NOT_RUN"
+    "regional_height_check": "NOT_RUN",
+    "regional_single_asset_weight_check": "NOT_RUN"
   },
   "reason": "Request rejected. Tower TWR-999 was not found in the inventory.",
   "final_tower_weight_kg": null
@@ -50,9 +54,11 @@ OUTPUT:
   "requested_height_m": 30,
   "region": "DXB-North",
   "checks": {
+    "request_parse_check": "PASSED",
     "tower_exists": true,
     "weight_capacity_check": "FAILED",
-    "regional_policy_check": "NOT_RUN"
+    "regional_height_check": "NOT_RUN",
+    "regional_single_asset_weight_check": "NOT_RUN"
   },
   "reason": "Request rejected. Adding 20kg to the current 595kg would reach 615kg, which exceeds tower TWR-104's maximum of 600kg.",
   "final_tower_weight_kg": null
@@ -70,9 +76,11 @@ OUTPUT:
   "requested_height_m": 50,
   "region": "DXB-North",
   "checks": {
+    "request_parse_check": "PASSED",
     "tower_exists": true,
     "weight_capacity_check": "PASSED",
-    "regional_policy_check": "FAILED"
+    "regional_height_check": "FAILED",
+    "regional_single_asset_weight_check": "NOT_RUN"
   },
   "reason": "Request rejected. Requested height of 50 meters exceeds the DXB-North regional limit of 45 meters.",
   "final_tower_weight_kg": null
@@ -90,9 +98,11 @@ OUTPUT:
   "requested_height_m": 15,
   "region": "SHJ-Coastal",
   "checks": {
+    "request_parse_check": "PASSED",
     "tower_exists": true,
     "weight_capacity_check": "PASSED",
-    "regional_policy_check": "FAILED"
+    "regional_height_check": "NOT_APPLICABLE",
+    "regional_single_asset_weight_check": "FAILED"
   },
   "reason": "Request rejected. A single asset of 30kg exceeds the SHJ-Coastal regional limit of 25kg per tenant asset.",
   "final_tower_weight_kg": null

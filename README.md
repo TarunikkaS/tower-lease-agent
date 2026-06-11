@@ -17,7 +17,7 @@ rules, and replies with a clear **APPROVED / REJECTED** verdict as structured JS
 ![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=flat-square&logo=python&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-none-success?style=flat-square)
 ![Std Library](https://img.shields.io/badge/built%20with-standard%20library-blue?style=flat-square)
-![Status](https://img.shields.io/badge/status-working-brightgreen?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-8%20passing-brightgreen?style=flat-square)
 
 </div>
 
@@ -48,6 +48,15 @@ do the math, and reply yes or no. **This agent does that job automatically.**
              { "status": "APPROVED", ... }
 ```
 
+### What this is (and isn't)
+
+This is a **lightweight, deterministic backend agent**. It works in an
+"AI-style" pipeline — *understand the request, then reason over tools/rules* —
+but the understanding is **rule-based regex extraction** and the decision is made
+by **fixed business rules**. There is **no LLM, no LangChain, and no external
+dependency** — just the Python standard library. The same input always produces
+the same output, which makes it predictable, fast, and easy to test.
+
 ---
 
 ## How it works
@@ -69,6 +78,7 @@ tower-lease-agent/
 |-- main.py                 # Entry point   - feeds requests in, prints JSON out
 |-- agent.py                # The brain     - regex extraction + decision rules
 |-- tools.py                # Data layer    - loads the JSON DB + the policies TXT
+|-- test_agent.py           # Tests         - 8 unittest cases, no dependencies
 |
 |-- towers_inventory.json   # Tower database (120 towers; scales to thousands)
 |-- regional_policies.txt   # Municipality rules per region
@@ -91,46 +101,64 @@ would change **only** `tools.py`.
 Requires **Python 3.8+**. Nothing to install — pure standard library.
 
 ```bash
-# Run all built-in demo cases (1 approved + 4 rejected)
+# 1. Run all built-in demo cases (1 approved + 4 rejected)
 python3 main.py
 
-# Or judge your own request - just write a sentence in quotes
+# 2. Judge your own request - just write a sentence in quotes
 python3 main.py "Operator Du wants to mount a 15kg 5G antenna at a height of 40 meters on Tower TWR-101."
+
+# 3. Run the test suite (8 tests)
+python3 -m unittest test_agent.py
 ```
 
 ---
 
 ## The rules it enforces
 
-The agent checks rules **in order and stops at the first failure** — just like a
-careful human reviewer.
+The agent runs five checks **in order and stops at the first failure** — just
+like a careful human reviewer.
 
 ```
-  request --> [ 1. tower exists? ] --no--> REJECTED
+  request --> [ 0. parsed ok?        ] --no--> REJECTED  (request_parse_check)
                      |
                     yes
                      v
-              [ 2. weight capacity? ] --no--> REJECTED
+              [ 1. tower exists?      ] --no--> REJECTED  (tower_exists)
                      |
                     yes
                      v
-              [ 3. regional height? ] --no--> REJECTED
+              [ 2. weight capacity?   ] --no--> REJECTED  (weight_capacity_check)
                      |
                     yes
                      v
-           [ 4. regional asset weight? ] --no--> REJECTED
+              [ 3. regional height?   ] --no--> REJECTED  (regional_height_check)
+                     |
+                    yes
+                     v
+        [ 4. regional asset weight?   ] --no--> REJECTED  (regional_single_asset_weight_check)
                      |
                     yes
                      v
                   APPROVED  (+ final_tower_weight_kg)
 ```
 
-| # | Check | Rule |
-|:-:|-------|------|
-| 1 | **Tower exists** | The tower ID must be in `towers_inventory.json`. |
-| 2 | **Weight capacity** | `current_weight + requested_weight <= max_allowed_weight` |
-| 3 | **Regional height** | Requested height <= the region's height limit (if any). |
-| 4 | **Regional asset weight** | A single asset <= the region's per-asset limit (if any). |
+| # | Check key | Rule |
+|:-:|-----------|------|
+| 0 | `request_parse_check` | Tower ID, weight, **and** height must all be readable from the text. |
+| 1 | `tower_exists` | The tower ID must be in `towers_inventory.json`. |
+| 2 | `weight_capacity_check` | `current_weight + requested_weight <= max_allowed_weight` |
+| 3 | `regional_height_check` | Requested height <= the region's height limit. |
+| 4 | `regional_single_asset_weight_check` | A single asset <= the region's per-asset limit. |
+
+Each check reports one of four states, so the JSON tells the **full story** of a
+decision:
+
+| State | Meaning |
+|-------|---------|
+| `PASSED` | The rule was checked and satisfied. |
+| `FAILED` | The rule was checked and broken (this is why it was rejected). |
+| `NOT_APPLICABLE` | The region has no such rule, so there's nothing to enforce. |
+| `NOT_RUN` | An earlier check failed, so this one was never reached. |
 
 ---
 
@@ -154,37 +182,83 @@ Operator Du wants to mount a 15kg 5G antenna at a height of 40 meters on Tower T
   "requested_height_m": 40,
   "region": "DXB-North",
   "checks": {
+    "request_parse_check": "PASSED",
     "tower_exists": true,
     "weight_capacity_check": "PASSED",
-    "regional_policy_check": "PASSED"
+    "regional_height_check": "PASSED",
+    "regional_single_asset_weight_check": "NOT_APPLICABLE"
   },
-  "reason": "Request approved. The tower has enough remaining capacity and the requested height follows the DXB-North regional policy.",
+  "reason": "Request approved. Tower TWR-101 has enough remaining capacity (475kg of 500kg used) and the request satisfies all DXB-North regional policies.",
   "final_tower_weight_kg": 475
 }
 ```
+
+> 460kg current + 15kg = 475kg <= 500kg, and 40m <= the DXB-North 45m limit.
+> DXB-North has no single-asset weight rule, so that check is `NOT_APPLICABLE`.
 
 ## Example: every rejection path
 
 | Scenario | Example request | Why it's rejected |
 |----------|-----------------|-------------------|
+| **Unreadable request** | `... mount a 15kg 5G antenna on TWR-101.` (no height) | Height could not be parsed. |
 | **Tower not found** | `... on Tower TWR-999.` | TWR-999 isn't in the inventory. |
 | **Weight capacity exceeded** | `20kg dish ... on TWR-104` (595/600kg) | 595 + 20 = 615 > 600. |
 | **Regional height limit** | `... at a height of 50 meters on TWR-101` | 50m > DXB-North's 45m cap. |
 | **Single-asset weight limit** | `30kg antenna ... on TWR-102` | 30kg > SHJ-Coastal's 25kg/asset cap. |
 
-> The full, real output for all of these lives in
+> The full, real output for the demo cases lives in
 > [`sample_outputs.txt`](sample_outputs.txt) — generated by running `python3 main.py`.
+
+---
+
+## Input flexibility
+
+The regex extraction tolerates everyday variation without overcomplicating:
+
+| Field | Accepted forms |
+|-------|----------------|
+| Weight | `15kg`, `15 kg`, `15KG`, `15.5kg` (decimals kept as floats) |
+| Height | `40 meters`, `40 meter`, `40m`, `40 m`, `40.5m` |
+| Tower ID | `TWR-101` or lowercase `twr-101` (normalized to uppercase) |
+
+Whole numbers stay `int` (e.g. `15`); decimals stay `float` (e.g. `15.5`).
 
 ---
 
 ## Built to scale (5 towers or 100,000)
 
-The assignment ships with sample towers; this project includes **120**. The real
-point is that the *code* scales:
+This project ships with **120 towers**, but the real point is that the *code*
+scales:
 
 - Towers are loaded into a **dictionary keyed by `tower_id`**, so looking up any
   tower is **instant — O(1)** — it never loops through the whole list.
 - Add 10 towers or 100,000; lookup speed doesn't change.
+- The inventory is validated so every tower has `current_weight_kg <=
+  max_allowed_weight_kg`.
+
+---
+
+## Tests
+
+Eight `unittest` cases cover the success path and every rejection path:
+
+```bash
+python3 -m unittest test_agent.py
+```
+
+| Test | Verifies |
+|------|----------|
+| `test_standard_approved_case` | The assignment's headline approved case. |
+| `test_tower_not_found` | Unknown tower is rejected. |
+| `test_weight_capacity_exceeded` | Over-capacity is rejected; later checks `NOT_RUN`. |
+| `test_regional_height_exceeded` | Height over the regional cap is rejected. |
+| `test_regional_single_asset_weight_exceeded` | SHJ-Coastal 25kg/asset cap enforced. |
+| `test_missing_height_rejected` | Missing height fails `request_parse_check`. |
+| `test_lowercase_tower_id` | `twr-101` is normalized and still works. |
+| `test_extraction_variants` | Spacing and decimal parsing (`15.5 kg`, `40m`). |
+
+The tests pass controlled fixtures into the agent, so they check the **logic**
+and never break just because the inventory file changes.
 
 ---
 
@@ -192,16 +266,15 @@ point is that the *code* scales:
 
 - **Predictable sentence shape.** Requests roughly follow
   *"Operator X wants to mount a Nkg \<equipment\> at a height of M meters on Tower TWR-###."*
-  That's what the regex targets. Very different phrasing may not extract cleanly —
-  in which case the agent **safely rejects** rather than guessing.
-- **Whole-number** kg and meters (e.g. `15kg`, `40 meters`).
-- **Tower IDs** look like `TWR-101` (capitals, dash, digits); the lookup itself
-  works for any ID string.
+  That's what the regex targets. If a key fact can't be read, the agent
+  **safely rejects** (via `request_parse_check`) rather than guessing.
 - **Region names match** between the JSON (`DXB-North`) and the policy file
   (`DXB-North Zone:`).
-- **A region with no policy on file** simply has no extra restriction.
-- **Inventory is read-only.** An approval *reports* the projected final weight but
-  doesn't write it back to the JSON — persisting state would be the natural next step.
+- **A region with no policy on file** simply has no extra restriction — the
+  relevant check is reported as `NOT_APPLICABLE`.
+- **Inventory is read-only.** An approval *reports* the projected final weight
+  but doesn't write it back to the JSON — persisting state would be the natural
+  next step.
 
 ---
 
@@ -209,10 +282,11 @@ point is that the *code* scales:
 
 | | |
 |---|---|
-| **Language** | Python 3 (standard library only — `re`, `json`, `os`, `sys`) |
-| **Extraction** | Rule-based regular expressions |
+| **Language** | Python 3.8+ (standard library only — `re`, `json`, `os`, `sys`, `unittest`) |
+| **Extraction** | Rule-based regular expressions (deterministic, no LLM) |
 | **Data** | JSON tower database + TXT regional policies |
 | **Output** | Structured JSON |
+| **Tests** | `unittest`, 8 cases, zero dependencies |
 
 <div align="center">
 
