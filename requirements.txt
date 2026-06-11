@@ -1,0 +1,5 @@
+# This project uses ONLY the Python standard library (re, json, os, sys).
+# There are no third-party dependencies to install.
+#
+# It is kept here so the project follows the standard layout and so you
+# can add libraries later (for example "fastapi" or "pytest") if needed.

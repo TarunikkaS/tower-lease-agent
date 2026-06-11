@@ -1,0 +1,100 @@
+INPUT:
+  Operator Du wants to mount a 15kg 5G antenna at a height of 40 meters on Tower TWR-101.
+OUTPUT:
+{
+  "status": "APPROVED",
+  "operator": "Du",
+  "tower_id": "TWR-101",
+  "equipment_type": "5G antenna",
+  "requested_weight_kg": 15,
+  "requested_height_m": 40,
+  "region": "DXB-North",
+  "checks": {
+    "tower_exists": true,
+    "weight_capacity_check": "PASSED",
+    "regional_policy_check": "PASSED"
+  },
+  "reason": "Request approved. The tower has enough remaining capacity and the requested height follows the DXB-North regional policy.",
+  "final_tower_weight_kg": 475
+}
+----------------------------------------------------------------------
+INPUT:
+  Operator Etisalat wants to mount a 10kg radio at a height of 20 meters on Tower TWR-999.
+OUTPUT:
+{
+  "status": "REJECTED",
+  "operator": "Etisalat",
+  "tower_id": "TWR-999",
+  "equipment_type": "radio",
+  "requested_weight_kg": 10,
+  "requested_height_m": 20,
+  "region": null,
+  "checks": {
+    "tower_exists": false,
+    "weight_capacity_check": "NOT_RUN",
+    "regional_policy_check": "NOT_RUN"
+  },
+  "reason": "Request rejected. Tower TWR-999 was not found in the inventory.",
+  "final_tower_weight_kg": null
+}
+----------------------------------------------------------------------
+INPUT:
+  Operator Du wants to mount a 20kg dish at a height of 30 meters on Tower TWR-104.
+OUTPUT:
+{
+  "status": "REJECTED",
+  "operator": "Du",
+  "tower_id": "TWR-104",
+  "equipment_type": "dish",
+  "requested_weight_kg": 20,
+  "requested_height_m": 30,
+  "region": "DXB-North",
+  "checks": {
+    "tower_exists": true,
+    "weight_capacity_check": "FAILED",
+    "regional_policy_check": "NOT_RUN"
+  },
+  "reason": "Request rejected. Adding 20kg to the current 595kg would reach 615kg, which exceeds tower TWR-104's maximum of 600kg.",
+  "final_tower_weight_kg": null
+}
+----------------------------------------------------------------------
+INPUT:
+  Operator Du wants to mount a 5kg sensor at a height of 50 meters on Tower TWR-101.
+OUTPUT:
+{
+  "status": "REJECTED",
+  "operator": "Du",
+  "tower_id": "TWR-101",
+  "equipment_type": "sensor",
+  "requested_weight_kg": 5,
+  "requested_height_m": 50,
+  "region": "DXB-North",
+  "checks": {
+    "tower_exists": true,
+    "weight_capacity_check": "PASSED",
+    "regional_policy_check": "FAILED"
+  },
+  "reason": "Request rejected. Requested height of 50 meters exceeds the DXB-North regional limit of 45 meters.",
+  "final_tower_weight_kg": null
+}
+----------------------------------------------------------------------
+INPUT:
+  Operator Du wants to mount a 30kg 5G antenna at a height of 15 meters on Tower TWR-102.
+OUTPUT:
+{
+  "status": "REJECTED",
+  "operator": "Du",
+  "tower_id": "TWR-102",
+  "equipment_type": "5G antenna",
+  "requested_weight_kg": 30,
+  "requested_height_m": 15,
+  "region": "SHJ-Coastal",
+  "checks": {
+    "tower_exists": true,
+    "weight_capacity_check": "PASSED",
+    "regional_policy_check": "FAILED"
+  },
+  "reason": "Request rejected. A single asset of 30kg exceeds the SHJ-Coastal regional limit of 25kg per tenant asset.",
+  "final_tower_weight_kg": null
+}
+----------------------------------------------------------------------
