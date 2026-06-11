@@ -44,6 +44,12 @@ DEMO_REQUESTS = [
 
     # REJECTED: 30kg > 25kg single-asset limit in SHJ-Coastal.
     "Operator Du wants to mount a 30kg 5G antenna at a height of 15 meters on Tower TWR-102.",
+
+    # REJECTED: 20kg > 15kg single-asset limit in SHJ-South.
+    "Operator Du wants to mount a 20kg 5G antenna at a height of 30 meters on Tower TWR-103.",
+
+    # REJECTED: no height in the sentence, so the request cannot be parsed.
+    "Operator Du wants to mount a 15kg 5G antenna on Tower TWR-101.",
 ]
 
 
