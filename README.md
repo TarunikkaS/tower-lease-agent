@@ -100,16 +100,79 @@ would change **only** `tools.py`.
 
 Requires **Python 3.8+**. Nothing to install — pure standard library.
 
+**Step 1 — open a terminal in the project folder**
+
 ```bash
-# 1. Run all built-in demo cases (1 approved + 6 rejected)
+cd path/to/tower-lease-agent
+```
+
+**Step 2 — run one of the three commands below.** `main.py` is the only file
+you ever run directly; it loads the data and drives the agent for you.
+
+```bash
+# (A) Run all 7 built-in demo cases  (1 approved + 6 rejected)
 python3 main.py
 
-# 2. Judge your own request - just write a sentence in quotes
+# (B) Judge ONE request of your own   (write any sentence in quotes)
 python3 main.py "Operator Du wants to mount a 15kg 5G antenna at a height of 40 meters on Tower TWR-101."
 
-# 3. Run the test suite (8 tests)
+# (C) Run the test suite              (8 unittest cases)
 python3 -m unittest test_agent.py
 ```
+
+> On Windows, use `python` instead of `python3`.
+
+### What each command prints
+
+**(A) and (B)** print the request followed by the structured JSON judgment:
+
+```text
+INPUT:
+  Operator Du wants to mount a 15kg 5G antenna at a height of 40 meters on Tower TWR-101.
+OUTPUT:
+{
+  "status": "APPROVED",
+  ...
+  "final_tower_weight_kg": 475
+}
+----------------------------------------------------------------------
+```
+
+**(C)** prints the test results — a row of dots, one per passing test:
+
+```text
+........
+----------------------------------------------------------------------
+Ran 8 tests in 0.001s
+
+OK
+```
+
+> Prefer not to run anything? The captured output of all 7 demo cases is saved
+> in [`sample_outputs.txt`](sample_outputs.txt).
+
+### How the pieces fit together (what runs under the hood)
+
+```
+   you type:  python3 main.py "Operator Du wants ... TWR-101."
+                       |
+                       v
+   main.py            -> receives the text, calls the agent
+                       |
+                       v
+   agent.py           -> 1) extract_request_details()  reads the sentence (regex)
+                          2) evaluate_request()         applies the rules
+                       |          |
+                       |          v
+                       |   tools.py  -> load_towers()    reads towers_inventory.json
+                       |               load_policies()  reads regional_policies.txt
+                       |               find_tower()      instant lookup by tower_id
+                       v
+   main.py            -> prints the final JSON judgment to your terminal
+```
+
+You only ever call `main.py`. It calls `agent.py` (the decision logic), which in
+turn calls `tools.py` (the data layer) to read the JSON and TXT files.
 
 ---
 
