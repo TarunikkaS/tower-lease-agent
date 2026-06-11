@@ -70,6 +70,49 @@ the same output, which makes it predictable, fast, and easy to test.
 
 ---
 
+## The agent workflow (and why this design)
+
+This is best described as a **deterministic backend AI-style agent with
+tool-based rule checking**. The "AI" here is not a trained model — it is the
+**agent workflow**: the system perceives natural language, structures it,
+retrieves facts through tools, reasons over rules, and produces a decision.
+
+```
+   natural-language request
+            |
+            v
+   [ 1. structured extraction ]   regex turns the sentence into fields
+            |                      (operator, tower, equipment, weight, height)
+            v
+   [ 2. tool / data lookup ]      tools.py reads the tower DB + policy file
+            |                      (load_towers / load_policies / find_tower)
+            v
+   [ 3. rule-based reasoning ]    sequential business rules, stop at first failure
+            |                      (capacity, regional height, single-asset weight)
+            v
+   [ 4. structured decision ]     APPROVED / REJECTED + reason + per-rule checks
+```
+
+**Why a deterministic, rule-based agent — not a machine-learning model or an
+LLM?** Because this is a *compliance / vetting* task, and for that the rule-based
+design is the **correct** engineering choice, not a shortcut:
+
+| Property | Why it matters for lease vetting |
+|----------|----------------------------------|
+| **Deterministic** | The same request always yields the same verdict — essential when a decision must be defended to a regulator or operator. |
+| **Auditable** | Every verdict ships with a `checks` object showing exactly which rule passed, failed, or did not apply. You can trace *why*. |
+| **No hallucination** | A probabilistic model could approve an over-weight tower on a bad day. Fixed rules cannot. |
+| **Fast & free** | No model inference, no API calls, no network — it runs instantly offline. |
+| **Easy to test** | Deterministic logic means the 8 unit tests fully pin the behavior. |
+
+In short: the **language understanding** is rule-based extraction, and the
+**judgment** is a transparent rule engine — exactly the separation you want when
+a wrong "APPROVED" has real-world structural consequences. (An LLM extraction
+layer could be added in front of step 1 for messier free-text, but the
+rule-based decision core should stay deterministic.)
+
+---
+
 ## Project structure
 
 ```
