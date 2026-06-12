@@ -23,6 +23,23 @@ rules, and replies with a clear **APPROVED / REJECTED** verdict as structured JS
 
 ---
 
+## Quickstart
+
+Just cloned this? You can run it immediately — **no install step, no dependencies** (pure Python 3.8+ standard library):
+
+```bash
+git clone https://github.com/TarunikkaS/tower-lease-agent.git
+cd tower-lease-agent
+
+python3 main.py                              # run the 7 built-in demo cases
+python3 main.py "Operator Du wants to mount a 15kg 5G antenna at a height of 40 meters on Tower TWR-101."   # judge your own request
+python3 -m unittest test_agent.py            # run the 15-case test suite
+```
+
+> On Windows, use `python` instead of `python3`. See [Getting started](#getting-started) for what each command prints.
+
+---
+
 ## Overview
 
 A telecom infrastructure company rents physical space on its towers to mobile
