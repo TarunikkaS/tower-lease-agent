@@ -42,6 +42,85 @@ def _parse_number(raw):
 # ---------------------------------------------------------------------------
 # STEP 1: EXTRACTION
 # ---------------------------------------------------------------------------
+def _extract_operator(text):
+    """
+    Find the operator name across several sentence shapes:
+
+      - label form ............ "Operator: Du"  /  "Operator Du"
+      - subject form .......... "Du wants ..."  /  "Etisalat requests ..."
+
+    The label form is tried first (it is the most explicit). The subject form
+    is intentionally CASE-SENSITIVE: it only accepts a Capitalized word so we
+    pick up a proper operator name ("Du", "Etisalat") and never a lowercase
+    filler word like "the" in a phrase such as "the request requires ...".
+    """
+    # "Operator: Du" or "Operator Du" (the colon is optional).
+    label = re.search(r"Operator\b\s*:?\s*([A-Za-z0-9&\-]+)", text, re.IGNORECASE)
+    if label:
+        return label.group(1)
+
+    # "Du wants ...", "Etisalat requests ...", "Du needs ...", etc.
+    subject = re.search(
+        r"\b([A-Z][A-Za-z&]+)\s+"
+        r"(?:wants|requests?|requires|needs|seeks|would\s+like"
+        r"|is\s+requesting|is\s+seeking)\b",
+        text,
+    )
+    if subject:
+        return subject.group(1)
+
+    return None
+
+
+# Where an equipment phrase ends: the next structural word ("at", "on",
+# "weighing", "that", "which"), a stray numeric measurement ("35m", "15kg" — so
+# we don't swallow a height/weight that trails the equipment), or a piece of
+# punctuation / end of string. Used as a lookahead so the phrase is not consumed.
+# A measurement needs a UNIT after the number, so equipment like "5G antenna"
+# (where "5" is not followed by a unit) is left intact.
+_EQUIP_END = (
+    r"(?=\s+at\b|\s+on\b|\s+weighing\b|\s+that\b|\s+which\b"
+    r"|\s+\d+(?:\.\d+)?\s*(?:kg|meters|metres|meter|metre|m)\b"
+    r"|[.,;]|$)"
+)
+
+
+def _extract_equipment(text):
+    """
+    Find the equipment description across several sentence shapes. Each pattern
+    is tried in order and the first confident match wins:
+
+      1. label form ........... "Equipment: 5G antenna"
+      2. weighing form ........ "a 5G antenna weighing 15kg"
+      3. verb form ............ "mount a 15kg 5G antenna", "place a 5G antenna",
+                                 "install a 20kg radio unit"
+      4. weight-prefix form ... "15kg 5G antenna", "20kg radio unit"
+
+    If none match confidently the equipment stays None — that is allowed, the
+    request is NOT rejected for a missing equipment type alone.
+    """
+    patterns = [
+        # 1. Label form. The colon is required so we don't accidentally grab the
+        #    bare word "equipment" in a sentence like "The equipment weighs ...".
+        r"Equipment\b\s*:\s*(.+?)" + _EQUIP_END,
+        # 2. "<equipment> weighing 15kg" (anchored on an article).
+        r"(?:a|an|the)\s+(.+?)\s+weighing\s+\d",
+        # 3. Verb + article + optional weight + equipment.
+        r"(?:mount|install|place|add|fit|deploy|put|attach|erect|set\s*up)\s+"
+        r"(?:a|an|the)\s+(?:\d+(?:\.\d+)?\s*kg\s+)?(.+?)" + _EQUIP_END,
+        # 4. "15kg 5G antenna". The negative lookahead stops us from capturing a
+        #    structural word (e.g. "15kg at 40m" must NOT yield "at 40m").
+        r"\d+(?:\.\d+)?\s*kg\s+(?!at\b|on\b|in\b|to\b|of\b)(.+?)" + _EQUIP_END,
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            value = match.group(1).strip(" .,;")
+            if value:
+                return value
+    return None
+
+
 def extract_request_details(text):
     """
     Take a plain-text lease request and return a dictionary of the structured
@@ -61,9 +140,11 @@ def extract_request_details(text):
         }
 
     We use regex (regular expressions) because the requests follow a fairly
-    predictable sentence pattern. This is the "simple rule-based extraction"
-    the assignment asks us to start with. The patterns are written to tolerate
-    small variations (spacing, casing, decimals) without overcomplicating.
+    predictable set of sentence patterns. Rather than assume ONE sentence shape,
+    operator and equipment are extracted by trying several ordered patterns and
+    taking the first confident match, so the same facts are found even when the
+    word order changes (label form, reordered sentence, split sentence, ...).
+    The tower / weight / height patterns stay deliberately position-independent.
     """
     details = {
         "operator": None,
@@ -73,22 +154,22 @@ def extract_request_details(text):
         "requested_height_m": None,
     }
 
-    # --- Operator name ---
-    # Grab the word right after "Operator", e.g. "Operator Du" -> "Du".
-    operator_match = re.search(r"Operator\s+([A-Za-z0-9&\-]+)", text, re.IGNORECASE)
-    if operator_match:
-        details["operator"] = operator_match.group(1)
+    # --- Operator name --- (handles "Operator Du", "Operator: Du",
+    # "Du wants ...", "Etisalat requests ...").
+    details["operator"] = _extract_operator(text)
 
     # --- Tower ID ---
     # Tower IDs look like "TWR-101" (letters, a dash, then digits). We accept
     # lowercase too (e.g. "twr-101") and normalize the result to UPPERCASE so
-    # it always matches the keys in the inventory.
+    # it always matches the keys in the inventory. This is independent of where
+    # the tower ID appears in the sentence.
     tower_match = re.search(r"\b([A-Za-z]{2,}-\d+)\b", text)
     if tower_match:
         details["tower_id"] = tower_match.group(1).upper()
 
     # --- Equipment weight (kg) ---
-    # Matches "15kg", "15 kg", "15KG", and decimals like "15.5kg".
+    # Matches "15kg", "15 kg", "15KG", and decimals like "15.5kg" anywhere in
+    # the text (e.g. "weighs 15kg" or "a 15kg antenna").
     weight_match = re.search(r"(\d+(?:\.\d+)?)\s*kg", text, re.IGNORECASE)
     if weight_match:
         details["requested_weight_kg"] = _parse_number(weight_match.group(1))
@@ -105,15 +186,10 @@ def extract_request_details(text):
     if height_match:
         details["requested_height_m"] = _parse_number(height_match.group(1))
 
-    # --- Equipment type ---
-    # The equipment description usually sits between the weight and the word
-    # "at" (as in "...15kg 5G antenna at a height of..."). We capture that
-    # middle chunk of text, e.g. "5G antenna".
-    equip_match = re.search(
-        r"\d+(?:\.\d+)?\s*kg\s+(.*?)\s+at\b", text, re.IGNORECASE
-    )
-    if equip_match:
-        details["equipment_type"] = equip_match.group(1).strip()
+    # --- Equipment type --- (handles "Equipment: 5G antenna", "15kg 5G antenna",
+    # "5G antenna weighing 15kg", "place a 5G antenna", "install a 20kg radio
+    # unit"). May stay None; that alone never rejects the request.
+    details["equipment_type"] = _extract_equipment(text)
 
     return details
 

@@ -156,7 +156,7 @@ OUTPUT:
   "status": "REJECTED",
   "operator": "Du",
   "tower_id": "TWR-101",
-  "equipment_type": null,
+  "equipment_type": "5G antenna",
   "requested_weight_kg": 15,
   "requested_height_m": null,
   "region": null,

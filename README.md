@@ -17,7 +17,7 @@ rules, and replies with a clear **APPROVED / REJECTED** verdict as structured JS
 ![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=flat-square&logo=python&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-none-success?style=flat-square)
 ![Std Library](https://img.shields.io/badge/built%20with-standard%20library-blue?style=flat-square)
-![Tests](https://img.shields.io/badge/tests-8%20passing-brightgreen?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-15%20passing-brightgreen?style=flat-square)
 
 </div>
 
@@ -63,7 +63,7 @@ the same output, which makes it predictable, fast, and easy to test.
 
 | Step | Job | Lives in |
 |:----:|-----|----------|
-| 1 | **Read** the plain-text request | `main.py` |
+| 1 | **Read** the plain-text request (any supported sentence shape) | `main.py` |
 | 2 | **Extract** operator, tower, equipment, weight, height (regex) | `agent.py` |
 | 3 | **Cross-reference** the tower DB + regional policies | `tools.py` |
 | 4 | **Judge** -> APPROVED / REJECTED + reason + rule checks | `agent.py` |
@@ -121,7 +121,7 @@ tower-lease-agent/
 |-- main.py                 # Entry point   - feeds requests in, prints JSON out
 |-- agent.py                # The brain     - regex extraction + decision rules
 |-- tools.py                # Data layer    - loads the JSON DB + the policies TXT
-|-- test_agent.py           # Tests         - 8 unittest cases, no dependencies
+|-- test_agent.py           # Tests         - 15 unittest cases, no dependencies
 |
 |-- towers_inventory.json   # Tower database (120 towers; scales to thousands)
 |-- regional_policies.txt   # Municipality rules per region
@@ -159,7 +159,7 @@ python3 main.py
 # (B) Judge ONE request of your own   (write any sentence in quotes)
 python3 main.py "Operator Du wants to mount a 15kg 5G antenna at a height of 40 meters on Tower TWR-101."
 
-# (C) Run the test suite              (8 unittest cases)
+# (C) Run the test suite              (15 unittest cases)
 python3 -m unittest test_agent.py
 ```
 
@@ -184,9 +184,9 @@ OUTPUT:
 **(C)** prints the test results — a row of dots, one per passing test:
 
 ```text
-........
+...............
 ----------------------------------------------------------------------
-Ran 8 tests in 0.001s
+Ran 15 tests in 0.002s
 
 OK
 ```
@@ -320,15 +320,36 @@ Operator Du wants to mount a 15kg 5G antenna at a height of 40 meters on Tower T
 
 ## Input flexibility
 
-The regex extraction tolerates everyday variation without overcomplicating:
+The same facts are extracted **even when the sentence structure or word order
+changes**. Instead of assuming one fixed sentence shape, operator and equipment
+are each matched against several ordered patterns (first confident match wins),
+while tower / weight / height are matched position-independently anywhere in the
+text. All five styles below extract the **identical** structured fields:
+
+| # | Prompt style | Example |
+|:-:|--------------|---------|
+| 1 | Original assignment style | `Operator Du wants to mount a 15kg 5G antenna at a height of 40 meters on Tower TWR-101.` |
+| 2 | Reordered (tower stated first) | `Tower TWR-101 request: Operator Du wants to install a 15kg 5G antenna at 40m.` |
+| 3 | Label / comma form | `Operator: Du, Tower: TWR-101, Equipment: 5G antenna, Weight: 15kg, Height: 40 meters.` |
+| 4 | Split across two sentences | `Du wants to place a 5G antenna on Tower TWR-101. The equipment weighs 15kg and will be installed at 40m.` |
+| 5 | "<Operator> requests ..." wording | `Etisalat requests approval for a 20kg radio unit at 30 meters on TWR-104.` |
+
+**Field-level forms it accepts:**
 
 | Field | Accepted forms |
 |-------|----------------|
+| Operator | `Operator Du`, `Operator: Du`, `Du wants ...`, `Etisalat requests ...` |
+| Equipment | `Equipment: 5G antenna`, `15kg 5G antenna`, `5G antenna weighing 15kg`, `place a 5G antenna`, `mount a 15kg 5G antenna`, `install a 20kg radio unit` |
 | Weight | `15kg`, `15 kg`, `15KG`, `15.5kg` (decimals kept as floats) |
 | Height | `40 meters`, `40 meter`, `40m`, `40 m`, `40.5m` |
 | Tower ID | `TWR-101` or lowercase `twr-101` (normalized to uppercase) |
 
 Whole numbers stay `int` (e.g. `15`); decimals stay `float` (e.g. `15.5`).
+
+> **Equipment is optional.** If the equipment type can't be read confidently it
+> stays `null` and the request is **not** rejected for that alone. A request is
+> only rejected at the parse stage when the **tower ID, weight, or height** is
+> missing.
 
 ---
 
@@ -347,7 +368,8 @@ scales:
 
 ## Tests
 
-Eight `unittest` cases cover the success path and every rejection path:
+Fifteen `unittest` cases cover the success path, every rejection path, and the
+flexible sentence shapes:
 
 ```bash
 python3 -m unittest test_agent.py
@@ -363,6 +385,13 @@ python3 -m unittest test_agent.py
 | `test_missing_height_rejected` | Missing height fails `request_parse_check`. |
 | `test_lowercase_tower_id` | `twr-101` is normalized and still works. |
 | `test_extraction_variants` | Spacing and decimal parsing (`15.5 kg`, `40m`). |
+| `test_format_reordered_sentence` | Tower-first reordered sentence (format 2). |
+| `test_format_label_based` | Comma-separated label form (format 3). |
+| `test_format_natural_split_sentence` | Facts split across two sentences (format 4). |
+| `test_format_operator_requests_wording` | "`Etisalat requests ...`", bare tower ID (format 5). |
+| `test_equipment_weighing_form` | "`5G antenna weighing 15kg`" wording. |
+| `test_equipment_stops_before_trailing_measurement` | Equipment doesn't swallow a trailing height (`sensor 35m up` → `sensor`). |
+| `test_missing_equipment_still_approved` | Null equipment alone does not reject. |
 
 The tests pass controlled fixtures into the agent, so they check the **logic**
 and never break just because the inventory file changes.
@@ -371,10 +400,12 @@ and never break just because the inventory file changes.
 
 ## Assumptions
 
-- **Predictable sentence shape.** Requests roughly follow
-  *"Operator X wants to mount a Nkg \<equipment\> at a height of M meters on Tower TWR-###."*
-  That's what the regex targets. If a key fact can't be read, the agent
-  **safely rejects** (via `request_parse_check`) rather than guessing.
+- **Flexible but bounded sentence shapes.** The extractor handles several
+  common phrasings (see [Input flexibility](#input-flexibility)) — reordered,
+  label, split, and "<operator> requests" forms — not just the original
+  template. It is still regex-based, so a wildly different phrasing may not
+  parse; in that case, if a key fact (tower / weight / height) can't be read,
+  the agent **safely rejects** (via `request_parse_check`) rather than guessing.
 - **Region names match** between the JSON (`DXB-North`) and the policy file
   (`DXB-North Zone:`).
 - **A region with no policy on file** simply has no extra restriction — the
@@ -393,7 +424,7 @@ and never break just because the inventory file changes.
 | **Extraction** | Rule-based regular expressions (deterministic, no LLM) |
 | **Data** | JSON tower database + TXT regional policies |
 | **Output** | Structured JSON |
-| **Tests** | `unittest`, 8 cases, zero dependencies |
+| **Tests** | `unittest`, 15 cases, zero dependencies |
 
 <div align="center">
 

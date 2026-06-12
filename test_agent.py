@@ -150,6 +150,93 @@ class TestLeaseAgent(unittest.TestCase):
         self.assertEqual(details["requested_height_m"], 40)     # whole number kept as int
         self.assertEqual(details["tower_id"], "TWR-101")
 
+    # -- Flexible sentence shapes -------------------------------------------
+    # The next group proves the SAME facts are extracted even when the word
+    # order / sentence structure changes. They focus on extraction so they read
+    # like a truth-table of supported prompt styles.
+
+    # Format 2: tower stated first, then the request (reordered sentence).
+    def test_format_reordered_sentence(self):
+        details = extract_request_details(
+            "Tower TWR-101 request: Operator Du wants to install a 15kg 5G "
+            "antenna at 40m."
+        )
+        self.assertEqual(details["operator"], "Du")
+        self.assertEqual(details["tower_id"], "TWR-101")
+        self.assertEqual(details["equipment_type"], "5G antenna")
+        self.assertEqual(details["requested_weight_kg"], 15)
+        self.assertEqual(details["requested_height_m"], 40)
+
+    # Format 3: comma-separated label form.
+    def test_format_label_based(self):
+        details = extract_request_details(
+            "Operator: Du, Tower: TWR-101, Equipment: 5G antenna, "
+            "Weight: 15kg, Height: 40 meters."
+        )
+        self.assertEqual(details["operator"], "Du")
+        self.assertEqual(details["tower_id"], "TWR-101")
+        self.assertEqual(details["equipment_type"], "5G antenna")
+        self.assertEqual(details["requested_weight_kg"], 15)
+        self.assertEqual(details["requested_height_m"], 40)
+        # And the label form judges through to APPROVED end-to-end.
+        result = self.judge(
+            "Operator: Du, Tower: TWR-101, Equipment: 5G antenna, "
+            "Weight: 15kg, Height: 40 meters."
+        )
+        self.assertEqual(result["status"], "APPROVED")
+
+    # Format 4: facts split across two natural sentences.
+    def test_format_natural_split_sentence(self):
+        details = extract_request_details(
+            "Du wants to place a 5G antenna on Tower TWR-101. The equipment "
+            "weighs 15kg and will be installed at 40m."
+        )
+        self.assertEqual(details["operator"], "Du")
+        self.assertEqual(details["tower_id"], "TWR-101")
+        self.assertEqual(details["equipment_type"], "5G antenna")
+        self.assertEqual(details["requested_weight_kg"], 15)
+        self.assertEqual(details["requested_height_m"], 40)
+
+    # Format 5: "<Operator> requests ..." wording, bare tower ID, "radio unit".
+    def test_format_operator_requests_wording(self):
+        details = extract_request_details(
+            "Etisalat requests approval for a 20kg radio unit at 30 meters "
+            "on TWR-104."
+        )
+        self.assertEqual(details["operator"], "Etisalat")
+        self.assertEqual(details["tower_id"], "TWR-104")
+        self.assertEqual(details["equipment_type"], "radio unit")
+        self.assertEqual(details["requested_weight_kg"], 20)
+        self.assertEqual(details["requested_height_m"], 30)
+
+    # "<equipment> weighing <n>kg" wording is recognized.
+    def test_equipment_weighing_form(self):
+        details = extract_request_details(
+            "Operator Du wants to mount a 5G antenna weighing 15kg at a height "
+            "of 40 meters on Tower TWR-101."
+        )
+        self.assertEqual(details["equipment_type"], "5G antenna")
+
+    # Equipment capture stops before a trailing measurement, so a phrasing like
+    # "10kg sensor 35m up" yields "sensor", not "sensor 35m up". (A number must
+    # be followed by a unit to count as a boundary, so "5G antenna" is intact.)
+    def test_equipment_stops_before_trailing_measurement(self):
+        details = extract_request_details(
+            "Operator Du wants to mount a 10kg sensor 35m up on TWR-101."
+        )
+        self.assertEqual(details["equipment_type"], "sensor")
+        self.assertEqual(details["requested_height_m"], 35)
+
+    # Equipment may stay null without rejecting the request, as long as the
+    # tower / weight / height are all present.
+    def test_missing_equipment_still_approved(self):
+        text = "Operator: Du, Tower: TWR-101, Weight: 15kg, Height: 40 meters."
+        details = extract_request_details(text)
+        self.assertIsNone(details["equipment_type"])
+        result = self.judge(text)
+        self.assertEqual(result["status"], "APPROVED")
+        self.assertEqual(result["checks"]["request_parse_check"], "PASSED")
+
 
 if __name__ == "__main__":
     unittest.main()
